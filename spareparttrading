@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14213d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gudang">
+<title>Gudang</title>
+<style>
+:root{--bg:#eef0f3;--card:#fff;--ink:#14213d;--mut:#5b6577;--line:#d6dae1;--acc:#f2a900;--in:#1b7f5c;--out:#c2410c;--r:10px}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1420;--card:#18202f;--ink:#e8ecf3;--mut:#93a0b5;--line:#2b3548}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-top:env(safe-area-inset-top,0)}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#14213d;color:#fff;border-bottom:4px solid var(--acc)}
+header b{font-size:18px}
+header button{background:none;border:1px solid #ffffff55;color:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-size:14px}
+main{padding:16px 16px 100px;max-width:560px;margin:0 auto}
+h2{margin:0 0 12px;font-size:20px}
+p{margin:0 0 8px}
+label{display:block;font-size:14px;color:var(--mut);margin:12px 0 4px}
+input,select{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:var(--r);background:var(--card);color:var(--ink)}
+.btn{width:100%;margin-top:12px;padding:14px;border:0;border-radius:var(--r);font:inherit;font-weight:700;color:#fff;background:var(--ink)}
+.btn.in{background:var(--in)}.btn.out{background:var(--out)}
+.btn.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.btn:disabled{opacity:.5}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.sku,.hint{color:var(--mut);font-size:13px}
+.tot{font-weight:700;font-size:20px}
+.locs{margin-top:6px;font-size:14px}
+.locs span{display:inline-block;margin:2px 8px 2px 0;padding:2px 8px;border:1px solid var(--line);border-radius:6px}
+.low,.errs{color:var(--out);font-size:13px;font-weight:700}
+.errs div{font-weight:400;margin-top:2px}
+.empty{color:var(--mut);text-align:center;padding:24px 0}
+.sec{margin-bottom:32px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0)}
+nav button{flex:1;padding:12px 2px;border:0;background:none;color:var(--mut);font:inherit;font-size:13px;border-top:3px solid transparent}
+nav button.on{color:var(--ink);font-weight:700;border-top-color:var(--acc)}
+#toast{position:fixed;left:16px;right:16px;bottom:80px;padding:12px 14px;border-radius:var(--r);background:var(--ink);color:#fff;display:none;z-index:9}
+#toast.err{background:var(--out)}
+#login{max-width:360px;margin:12vh auto;padding:0 16px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+// ====== ISI DUA BARIS INI (Supabase > Project Settings > API) ======
+const SB_URL = 'https://pghvtzfyuxhafdnmwsfh.supabase.co/rest/v1/';
+const SB_KEY = 'sb_publishable_C6hAkHr94fiLXlNY5ypV_w_rvHXx4QN';
+// ==================================================================
+
+const sb = supabase.createClient(SB_URL, SB_KEY);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let items = [], locs = [], stock = [], tab = 'stok', user = null, pending = null;
+
+try {
+  const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#14213d"/><rect x="22" y="30" width="56" height="42" fill="#f2a900"/><path d="M22 46h56" stroke="#14213d" stroke-width="5"/></svg>');
+  const m = {name:'Inventory Gudang',short_name:'Gudang',display:'standalone',start_url:location.href,background_color:'#14213d',theme_color:'#14213d',icons:[{src:icon,sizes:'512x512',type:'image/svg+xml'}]};
+  const l = document.createElement('link'); l.rel = 'manifest';
+  l.href = URL.createObjectURL(new Blob([JSON.stringify(m)], {type:'application/json'}));
+  document.head.appendChild(l);
+} catch (e) {}
+
+function toast(t, err) {
+  const el = $('#toast'); el.textContent = t; el.className = err ? 'err' : '';
+  el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = 'none', 3600);
+}
+const opts = (arr, fn, first) => (first ? `<option value="">${first}</option>` : '') + arr.map(x => `<option value="${x.id}">${esc(fn(x))}</option>`).join('');
+const total = id => stock.filter(s => s.item_id === id).reduce((a, s) => a + s.qty, 0);
+const locCode = id => (locs.find(l => l.id === id) || {}).code || '?';
+
+// Supabase membatasi 1000 baris per permintaan, jadi diambil bertahap
+async function all(tbl, mod) {
+  let out = [], from = 0;
+  for (;;) {
+    const { data, error } = await mod(sb.from(tbl).select('*')).range(from, from + 999);
+    if (error) throw error;
+    out = out.concat(data);
+    if (data.length < 1000) return out;
+    from += 1000;
+  }
+}
+async function load() {
+  try {
+    [items, locs, stock] = await Promise.all([
+      all('items', q => q.order('name').order('id')),
+      all('locations', q => q.order('code')),
+      all('stock', q => q.gt('qty', 0).order('item_id').order('location_id'))
+    ]);
+  } catch (e) { toast('Gagal memuat data: ' + e.message, true); }
+}
+
+function shell(body) {
+  const tabs = [['stok','Stok'],['out','Keluar'],['lok','Lokasi'],['data','Impor/Ekspor']];
+  $('#app').innerHTML = `<header><b>Gudang</b><button id="lo">Keluar akun</button></header>
+  <main>${body}</main>
+  <nav>${tabs.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
+  $('#lo').onclick = () => sb.auth.signOut();
+  document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; pending = null; render(); });
+}
+function render() {
+  if (!user) return renderLogin();
+  ({stok: viewStock, out: viewOut, lok: viewLoc, data: viewData})[tab]();
+}
+function renderLogin() {
+  $('#app').innerHTML = `<div id="login"><h2>Masuk ke Gudang</h2>
+  <label>Email</label><input id="em" type="email" autocomplete="username">
+  <label>Kata sandi</label><input id="pw" type="password" autocomplete="current-password">
+  <button class="btn" id="go">Masuk</button></div>`;
+  $('#go').onclick = async () => {
+    const { error } = await sb.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
+    if (error) toast('Email atau kata sandi salah', true);
+  };
+}
+
+function viewStock() {
+  shell(`<h2>Cek stok</h2><input id="q" placeholder="Cari nama atau SKU" type="search"><div id="ls" style="margin-top:12px"></div>`);
+  const draw = () => {
+    const q = $('#q').value.toLowerCase();
+    const rows = items.filter(i => (i.name + i.sku).toLowerCase().includes(q));
+    $('#ls').innerHTML = rows.length ? rows.slice(0, 100).map(i => {
+      const t = total(i.id), ss = stock.filter(s => s.item_id === i.id);
+      return `<div class="card"><div class="row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}</div></div>
+      <div class="tot">${t} <small>${esc(i.unit)}</small></div></div>
+      ${t <= i.min_stock ? '<div class="low">Stok menipis</div>' : ''}
+      <div class="locs">${ss.length ? ss.map(s => `<span>${esc(locCode(s.location_id))}: ${s.qty}</span>`).join('') : 'Belum ada stok'}</div></div>`;
+    }).join('') + (rows.length > 100 ? `<div class="hint">Menampilkan 100 dari ${rows.length} barang. Persempit pencarian.</div>` : '')
+      : `<div class="empty">${items.length ? 'Barang tidak ditemukan.' : 'Belum ada barang. Impor data penerimaan di tab Impor/Ekspor.'}</div>`;
+  };
+  $('#q').oninput = draw; draw();
+}
+
+function viewOut() {
+  shell(`<h2>Pengeluaran barang</h2>
+  <label>Cari barang</label><input id="fq" type="search" placeholder="Ketik nama atau SKU">
+  <label>Barang</label><select id="it"></select>
+  <label>Ambil dari lokasi</label><select id="lc"><option value="">Pilih barang dulu</option></select>
+  <label>Jumlah</label><input id="qt" type="number" inputmode="numeric" min="1">
+  <label>Tujuan / nomor pesanan</label><input id="nt">
+  <button class="btn out" id="sv">Simpan pengeluaran</button>`);
+  const fill = () => {
+    const q = $('#fq').value.toLowerCase();
+    const r = items.filter(i => total(i.id) > 0 && (i.name + i.sku).toLowerCase().includes(q)).slice(0, 100);
+    $('#it').innerHTML = opts(r, i => `${i.sku} · ${i.name}`, r.length ? 'Pilih barang' : 'Tidak ada barang');
+    $('#lc').innerHTML = '<option value="">Pilih barang dulu</option>';
+  };
+  $('#fq').oninput = fill; fill();
+  $('#it').onchange = () => {
+    const rows = stock.filter(s => s.item_id === $('#it').value);
+    $('#lc').innerHTML = rows.length ? opts(rows.map(s => ({ id: s.location_id, t: `${locCode(s.location_id)} (stok ${s.qty})` })), x => x.t, 'Pilih lokasi') : '<option value="">Tidak ada stok</option>';
+  };
+  $('#sv').onclick = async () => {
+    const it = $('#it').value, lc = $('#lc').value, qt = parseInt($('#qt').value, 10);
+    if (!it || !lc || !qt || qt < 1) return toast('Lengkapi barang, lokasi, dan jumlah', true);
+    $('#sv').disabled = true;
+    const { error } = await sb.rpc('move_stock', { p_item: it, p_loc: lc, p_type: 'OUT', p_qty: qt, p_note: $('#nt').value.trim() || null });
+    if (error) { $('#sv').disabled = false; return toast(error.message, true); }
+    await load(); toast('Pengeluaran tersimpan'); viewOut();
+  };
+}
+
+function viewLoc() {
+  shell(`<h2>Cek lokasi</h2><select id="lc">${opts(locs, l => l.code, 'Pilih lokasi')}</select><div id="ls" style="margin-top:12px"></div>`);
+  $('#lc').onchange = () => {
+    const rows = stock.filter(s => s.location_id === $('#lc').value);
+    $('#ls').innerHTML = rows.length ? rows.map(s => {
+      const i = items.find(x => x.id === s.item_id) || {};
+      return `<div class="card row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}</div></div><div class="tot">${s.qty} <small>${esc(i.unit)}</small></div></div>`;
+    }).join('') : '<div class="empty">Lokasi ini kosong.</div>';
+  };
+}
+
+// ---------- Impor & ekspor Excel ----------
+const ALIAS = {
+  sku: ['sku', 'kode', 'kode barang'], name: ['nama', 'nama barang', 'name'],
+  loc: ['lokasi', 'location', 'lokasi tujuan'], qty: ['jumlah', 'qty', 'quantity'],
+  unit: ['satuan', 'unit'], min_stock: ['min_stok', 'min stok', 'min_stock', 'stok minimum'],
+  note: ['catatan', 'keterangan', 'note', 'no surat jalan']
+};
+function parseRows(raw) {
+  const known = new Set(items.map(i => i.sku)), newSku = new Set(), newLoc = new Set(), errs = [], rows = [];
+  const have = new Set(locs.map(l => l.code));
+  raw.forEach((r, idx) => {
+    const n = {}; for (const k in r) n[String(k).trim().toLowerCase()] = r[k];
+    const o = {}; for (const f in ALIAS) for (const a of ALIAS[f]) if (n[a] !== undefined && String(n[a]).trim() !== '') { o[f] = String(n[a]).trim(); break; }
+    const line = idx + 2;
+    if (!o.sku) return errs.push(`Baris ${line}: SKU kosong`);
+    if (!o.loc) return errs.push(`Baris ${line}: lokasi kosong`);
+    const q = Number(o.qty);
+    if (!Number.isInteger(q) || q < 1) return errs.push(`Baris ${line}: jumlah harus bilangan bulat lebih dari 0`);
+    if (!known.has(o.sku) && !newSku.has(o.sku)) {
+      if (!o.name) return errs.push(`Baris ${line}: SKU ${o.sku} baru, kolom nama wajib diisi`);
+      newSku.add(o.sku);
+    }
+    o.loc = o.loc.toUpperCase(); if (!have.has(o.loc)) newLoc.add(o.loc);
+    rows.push({ sku: o.sku, name: o.name || '', unit: o.unit || '', min_stock: parseInt(o.min_stock, 10) || 0, loc: o.loc, qty: q, note: o.note || '' });
+  });
+  return { rows, errs, newSku: newSku.size, newLoc: newLoc.size };
+}
+function download(sheets, name) {
+  const wb = XLSX.utils.book_new();
+  sheets.forEach(([n, d]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(d), n));
+  XLSX.writeFile(wb, `${name}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+function viewData() {
+  shell(`<div class="sec"><h2>Penerimaan dari Excel</h2>
+  <p class="hint">Kolom wajib: sku, lokasi, jumlah. Untuk SKU yang belum terdaftar, isi juga kolom nama. Kolom opsional: satuan, min_stok, catatan. SKU dan lokasi baru dibuat otomatis.</p>
+  <button class="btn ghost" id="tpl">Unduh template Excel</button>
+  <label>Pilih file (.xlsx atau .csv)</label><input id="fl" type="file" accept=".xlsx,.xls,.csv">
+  <div id="pv" style="margin-top:12px"></div></div>
+  <div class="sec"><h2>Ekspor ke Excel</h2>
+  <button class="btn ghost" id="e1">Stok saat ini</button>
+  <button class="btn ghost" id="e2">Riwayat transaksi</button></div>`);
+  $('#tpl').onclick = () => download([['Penerimaan', [{ sku: 'KRD-001', nama: 'Kardus 40x30', lokasi: 'A-01-1', jumlah: 100, satuan: 'pcs', min_stok: 50, catatan: 'SJ-0001' }]]], 'template_penerimaan');
+  $('#fl').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      if (!raw.length) return toast('File kosong', true);
+      pending = parseRows(raw);
+    } catch (err) { return toast('File tidak bisa dibaca: ' + err.message, true); }
+    const p = pending;
+    $('#pv').innerHTML = `<div class="card"><b>${p.rows.length} baris valid</b>
+      <div class="sku">${p.newSku} SKU baru · ${p.newLoc} lokasi baru</div>
+      ${p.errs.length ? `<div class="errs" style="margin-top:8px">${p.errs.length} baris bermasalah, perbaiki file lalu unggah ulang:${p.errs.slice(0, 10).map(x => `<div>${esc(x)}</div>`).join('')}${p.errs.length > 10 ? `<div>dan ${p.errs.length - 10} lainnya</div>` : ''}</div>` : ''}</div>
+      <button class="btn in" id="go" ${p.errs.length || !p.rows.length ? 'disabled' : ''}>Proses penerimaan (${p.rows.length} baris)</button>`;
+    $('#go').onclick = async () => {
+      $('#go').disabled = true;
+      for (let i = 0; i < p.rows.length; i += 500) {
+        const { error } = await sb.rpc('receive_bulk', { p_rows: p.rows.slice(i, i + 500) });
+        if (error) { await load(); $('#go').disabled = false; return toast('Gagal: ' + error.message, true); }
+      }
+      await load(); pending = null; toast(`${p.rows.length} baris berhasil diterima`); viewData();
+    };
+  };
+  $('#e1').onclick = () => download([
+    ['Stok per lokasi', stock.map(s => { const i = items.find(x => x.id === s.item_id) || {}; return { SKU: i.sku, Nama: i.name, Satuan: i.unit, Lokasi: locCode(s.location_id), Jumlah: s.qty }; })],
+    ['Total per barang', items.map(i => ({ SKU: i.sku, Nama: i.name, Satuan: i.unit, Total: total(i.id), 'Batas menipis': i.min_stock }))]
+  ], 'stok');
+  $('#e2').onclick = async () => {
+    try {
+      const mv = await all('movements', q => q.order('created_at', { ascending: false }).order('id', { ascending: false }));
+      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Tipe: m.type === 'IN' ? 'Masuk' : 'Keluar', SKU: i.sku, Nama: i.name, Lokasi: locCode(m.location_id), Jumlah: m.qty, Catatan: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
+    } catch (err) { toast('Gagal ekspor: ' + err.message, true); }
+  };
+}
+
+sb.auth.onAuthStateChange(async (_e, session) => {
+  user = session ? session.user : null;
+  if (user) await load();
+  render();
+});
+sb.auth.getSession().then(({ data }) => { if (!data.session) render(); });
+</script>
+</body>
+</html>
