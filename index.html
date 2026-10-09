@@ -51,8 +51,8 @@ nav button.on{color:var(--ink);font-weight:700;border-top-color:var(--acc)}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 // ====== ISI DUA BARIS INI (Supabase > Project Settings > API) ======
-const SB_URL = 'https://pghvtzfyuxhafdnmwsfh.supabase.co/rest/v1/';
-const SB_KEY = 'sb_publishable_C6hAkHr94fiLXlNY5ypV_w_rvHXx4QN';
+const SB_URL = 'ISI_PROJECT_URL';
+const SB_KEY = 'ISI_ANON_PUBLIC_KEY';
 // ==================================================================
 
 const sb = supabase.createClient(SB_URL, SB_KEY);
@@ -98,7 +98,7 @@ async function load() {
 }
 
 function shell(body) {
-  const tabs = [['stok','Stok'],['out','Keluar'],['lok','Lokasi'],['data','Impor/Ekspor']];
+  const tabs = [['stok','Stok'],['in','Terima'],['out','Keluar'],['lok','Lokasi'],['data','Data']];
   $('#app').innerHTML = `<header><b>Gudang</b><button id="lo">Keluar akun</button></header>
   <main>${body}</main>
   <nav>${tabs.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
@@ -107,16 +107,18 @@ function shell(body) {
 }
 function render() {
   if (!user) return renderLogin();
-  ({stok: viewStock, out: viewOut, lok: viewLoc, data: viewData})[tab]();
+  ({stok: viewStock, in: viewIn, out: viewOut, lok: viewLoc, data: viewData})[tab]();
 }
 function renderLogin() {
   $('#app').innerHTML = `<div id="login"><h2>Masuk ke Gudang</h2>
-  <label>Email</label><input id="em" type="email" autocomplete="username">
+  <label>ID pengguna</label><input id="em" autocomplete="username" autocapitalize="none" placeholder="contoh: @Afifzain75">
   <label>Kata sandi</label><input id="pw" type="password" autocomplete="current-password">
   <button class="btn" id="go">Masuk</button></div>`;
   $('#go').onclick = async () => {
-    const { error } = await sb.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
-    if (error) toast('Email atau kata sandi salah', true);
+    const id = $('#em').value.trim().replace(/^@/, '').toLowerCase();
+    const email = id.includes('@') ? id : id + '@gudang.app';
+    const { error } = await sb.auth.signInWithPassword({ email, password: $('#pw').value });
+    if (error) toast(/invalid login/i.test(error.message) ? 'ID atau kata sandi salah' : /not confirmed/i.test(error.message) ? 'Akun belum dikonfirmasi di Supabase' : 'Gagal masuk: ' + error.message, true);
   };
 }
 
@@ -132,9 +134,34 @@ function viewStock() {
       ${t <= i.min_stock ? '<div class="low">Stok menipis</div>' : ''}
       <div class="locs">${ss.length ? ss.map(s => `<span>${esc(locCode(s.location_id))}: ${s.qty}</span>`).join('') : 'Belum ada stok'}</div></div>`;
     }).join('') + (rows.length > 100 ? `<div class="hint">Menampilkan 100 dari ${rows.length} barang. Persempit pencarian.</div>` : '')
-      : `<div class="empty">${items.length ? 'Barang tidak ditemukan.' : 'Belum ada barang. Impor data penerimaan di tab Impor/Ekspor.'}</div>`;
+      : `<div class="empty">${items.length ? 'Barang tidak ditemukan.' : 'Belum ada barang. Impor data penerimaan di tab Data.'}</div>`;
   };
   $('#q').oninput = draw; draw();
+}
+
+function viewIn() {
+  shell(`<h2>Penerimaan barang</h2>
+  <p class="hint">Untuk barang atau lokasi baru, dan penerimaan banyak sekaligus, gunakan tab Data.</p>
+  <label>Cari barang</label><input id="fq" type="search" placeholder="Ketik nama atau SKU">
+  <label>Barang</label><select id="it"></select>
+  <label>Simpan ke lokasi</label><select id="lc">${opts(locs, l => l.code, 'Pilih lokasi')}</select>
+  <label>Jumlah</label><input id="qt" type="number" inputmode="numeric" min="1">
+  <label>Nomor surat jalan / catatan</label><input id="nt">
+  <button class="btn in" id="sv">Simpan penerimaan</button>`);
+  const fill = () => {
+    const q = $('#fq').value.toLowerCase();
+    const r = items.filter(i => (i.name + i.sku).toLowerCase().includes(q)).slice(0, 100);
+    $('#it').innerHTML = opts(r, i => `${i.sku} · ${i.name}`, r.length ? 'Pilih barang' : 'Tidak ada barang');
+  };
+  $('#fq').oninput = fill; fill();
+  $('#sv').onclick = async () => {
+    const it = $('#it').value, lc = $('#lc').value, qt = parseInt($('#qt').value, 10);
+    if (!it || !lc || !qt || qt < 1) return toast('Lengkapi barang, lokasi, dan jumlah', true);
+    $('#sv').disabled = true;
+    const { error } = await sb.rpc('move_stock', { p_item: it, p_loc: lc, p_type: 'IN', p_qty: qt, p_note: $('#nt').value.trim() || null });
+    if (error) { $('#sv').disabled = false; return toast(error.message, true); }
+    await load(); toast('Penerimaan tersimpan'); viewIn();
+  };
 }
 
 function viewOut() {
