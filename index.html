@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#14213d">
+<meta name="theme-color" content="#1e90d6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Gudang">
 <title>Gudang</title>
 <style>
-:root{--bg:#eef0f3;--card:#fff;--ink:#14213d;--mut:#5b6577;--line:#d6dae1;--acc:#f2a900;--in:#1b7f5c;--out:#c2410c;--r:10px}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1420;--card:#18202f;--ink:#e8ecf3;--mut:#93a0b5;--line:#2b3548}}
+:root{--bg:#f1f7fb;--card:#fff;--ink:#0f3556;--mut:#56748b;--line:#cfe2ef;--acc:#1e90d6;--hd:#1e90d6;--lt:#8dc8e8;--pri:#1a7fc4;--in:#1a7fc4;--out:#c2410c;--r:10px}
+@media(prefers-color-scheme:dark){:root{--bg:#0a1a29;--card:#112739;--ink:#e6f1f9;--mut:#8fb0c7;--line:#1f3f5a;--hd:#14527f}}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-top:env(safe-area-inset-top,0)}
-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#14213d;color:#fff;border-bottom:4px solid var(--acc)}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--hd);color:#fff;border-bottom:4px solid var(--lt)}
 header b{font-size:18px}
 header button{background:none;border:1px solid #ffffff55;color:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-size:14px}
 main{padding:16px 16px 100px;max-width:560px;margin:0 auto}
@@ -22,7 +22,7 @@ h2{margin:0 0 12px;font-size:20px}
 p{margin:0 0 8px}
 label{display:block;font-size:14px;color:var(--mut);margin:12px 0 4px}
 input,select{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:var(--r);background:var(--card);color:var(--ink)}
-.btn{width:100%;margin-top:12px;padding:14px;border:0;border-radius:var(--r);font:inherit;font-weight:700;color:#fff;background:var(--ink)}
+.btn{width:100%;margin-top:12px;padding:14px;border:0;border-radius:var(--r);font:inherit;font-weight:700;color:#fff;background:var(--pri)}
 .btn.in{background:var(--in)}.btn.out{background:var(--out)}
 .btn.ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
 .btn:disabled{opacity:.5}
@@ -61,8 +61,8 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 let items = [], locs = [], stock = [], tab = 'stok', user = null, pending = null;
 
 try {
-  const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#14213d"/><rect x="22" y="30" width="56" height="42" fill="#f2a900"/><path d="M22 46h56" stroke="#14213d" stroke-width="5"/></svg>');
-  const m = {name:'Inventory Gudang',short_name:'Gudang',display:'standalone',start_url:location.href,background_color:'#14213d',theme_color:'#14213d',icons:[{src:icon,sizes:'512x512',type:'image/svg+xml'}]};
+  const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#1e90d6"/><rect x="22" y="30" width="56" height="42" fill="#ffffff"/><path d="M22 46h56" stroke="#1e90d6" stroke-width="5"/></svg>');
+  const m = {name:'Inventory Gudang',short_name:'Gudang',display:'standalone',start_url:location.href,background_color:'#1e90d6',theme_color:'#1e90d6',icons:[{src:icon,sizes:'512x512',type:'image/svg+xml'}]};
   const l = document.createElement('link'); l.rel = 'manifest';
   l.href = URL.createObjectURL(new Blob([JSON.stringify(m)], {type:'application/json'}));
   document.head.appendChild(l);
@@ -126,10 +126,10 @@ function viewStock() {
   shell(`<h2>Cek stok</h2><input id="q" placeholder="Cari nama atau SKU" type="search"><div id="ls" style="margin-top:12px"></div>`);
   const draw = () => {
     const q = $('#q').value.toLowerCase();
-    const rows = items.filter(i => (i.name + i.sku).toLowerCase().includes(q));
+    const rows = items.filter(i => (i.name + i.sku + (i.material_no || '')).toLowerCase().includes(q));
     $('#ls').innerHTML = rows.length ? rows.slice(0, 100).map(i => {
       const t = total(i.id), ss = stock.filter(s => s.item_id === i.id);
-      return `<div class="card"><div class="row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}</div></div>
+      return `<div class="card"><div class="row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}${i.material_no ? ' · Mat ' + esc(i.material_no) : ''}</div></div>
       <div class="tot">${t} <small>${esc(i.unit)}</small></div></div>
       ${t <= i.min_stock ? '<div class="low">Stok menipis</div>' : ''}
       <div class="locs">${ss.length ? ss.map(s => `<span>${esc(locCode(s.location_id))}: ${s.qty}</span>`).join('') : 'Belum ada stok'}</div></div>`;
@@ -150,7 +150,7 @@ function viewIn() {
   <button class="btn in" id="sv">Simpan penerimaan</button>`);
   const fill = () => {
     const q = $('#fq').value.toLowerCase();
-    const r = items.filter(i => (i.name + i.sku).toLowerCase().includes(q)).slice(0, 100);
+    const r = items.filter(i => (i.name + i.sku + (i.material_no || '')).toLowerCase().includes(q)).slice(0, 100);
     $('#it').innerHTML = opts(r, i => `${i.sku} · ${i.name}`, r.length ? 'Pilih barang' : 'Tidak ada barang');
   };
   $('#fq').oninput = fill; fill();
@@ -174,7 +174,7 @@ function viewOut() {
   <button class="btn out" id="sv">Simpan pengeluaran</button>`);
   const fill = () => {
     const q = $('#fq').value.toLowerCase();
-    const r = items.filter(i => total(i.id) > 0 && (i.name + i.sku).toLowerCase().includes(q)).slice(0, 100);
+    const r = items.filter(i => total(i.id) > 0 && (i.name + i.sku + (i.material_no || '')).toLowerCase().includes(q)).slice(0, 100);
     $('#it').innerHTML = opts(r, i => `${i.sku} · ${i.name}`, r.length ? 'Pilih barang' : 'Tidak ada barang');
     $('#lc').innerHTML = '<option value="">Pilih barang dulu</option>';
   };
@@ -199,17 +199,21 @@ function viewLoc() {
     const rows = stock.filter(s => s.location_id === $('#lc').value);
     $('#ls').innerHTML = rows.length ? rows.map(s => {
       const i = items.find(x => x.id === s.item_id) || {};
-      return `<div class="card row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}</div></div><div class="tot">${s.qty} <small>${esc(i.unit)}</small></div></div>`;
+      return `<div class="card row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}${i.material_no ? ' · Mat ' + esc(i.material_no) : ''}</div></div><div class="tot">${s.qty} <small>${esc(i.unit)}</small></div></div>`;
     }).join('') : '<div class="empty">Lokasi ini kosong.</div>';
   };
 }
 
 // ---------- Impor & ekspor Excel ----------
 const ALIAS = {
-  sku: ['sku', 'kode', 'kode barang'], name: ['nama', 'nama barang', 'name'],
-  loc: ['lokasi', 'location', 'lokasi tujuan'], qty: ['jumlah', 'qty', 'quantity'],
-  unit: ['satuan', 'unit'], min_stock: ['min_stok', 'min stok', 'min_stock', 'stok minimum'],
-  note: ['catatan', 'keterangan', 'note', 'no surat jalan']
+  sku: ['part no', 'part no.', 'part number', 'partnumber', 'sku', 'kode barang'],
+  material: ['material no', 'material no.', 'material number', 'material_no', 'material'],
+  name: ['desc', 'description', 'deskripsi', 'nama', 'nama barang'],
+  qty: ['qty', 'quantity', 'jumlah'],
+  unit: ['uom', 'satuan', 'unit'],
+  loc: ['location', 'lokasi'],
+  min_stock: ['min_stok', 'min stok', 'min_stock'],
+  note: ['remarks', 'remark', 'catatan', 'keterangan', 'note', 'no surat jalan']
 };
 function parseRows(raw) {
   const known = new Set(items.map(i => i.sku)), newSku = new Set(), newLoc = new Set(), errs = [], rows = [];
@@ -217,17 +221,17 @@ function parseRows(raw) {
   raw.forEach((r, idx) => {
     const n = {}; for (const k in r) n[String(k).trim().toLowerCase()] = r[k];
     const o = {}; for (const f in ALIAS) for (const a of ALIAS[f]) if (n[a] !== undefined && String(n[a]).trim() !== '') { o[f] = String(n[a]).trim(); break; }
-    const line = idx + 2;
-    if (!o.sku) return errs.push(`Baris ${line}: SKU kosong`);
-    if (!o.loc) return errs.push(`Baris ${line}: lokasi kosong`);
+    const line = idx + 2, loc = (o.loc || '').toUpperCase();
+    if (!o.sku) return errs.push(`Baris ${line}: Part No kosong`);
+    if (!loc) return errs.push(`Baris ${line}: Location kosong`);
     const q = Number(o.qty);
-    if (!Number.isInteger(q) || q < 1) return errs.push(`Baris ${line}: jumlah harus bilangan bulat lebih dari 0`);
+    if (!Number.isInteger(q) || q < 1) return errs.push(`Baris ${line}: Qty harus bilangan bulat lebih dari 0`);
     if (!known.has(o.sku) && !newSku.has(o.sku)) {
-      if (!o.name) return errs.push(`Baris ${line}: SKU ${o.sku} baru, kolom nama wajib diisi`);
+      if (!o.name) return errs.push(`Baris ${line}: Part No ${o.sku} baru, kolom Desc wajib diisi`);
       newSku.add(o.sku);
     }
-    o.loc = o.loc.toUpperCase(); if (!have.has(o.loc)) newLoc.add(o.loc);
-    rows.push({ sku: o.sku, name: o.name || '', unit: o.unit || '', min_stock: parseInt(o.min_stock, 10) || 0, loc: o.loc, qty: q, note: o.note || '' });
+    if (!have.has(loc)) newLoc.add(loc);
+    rows.push({ sku: o.sku, material_no: o.material || '', name: o.name || '', unit: o.unit || '', min_stock: parseInt(o.min_stock, 10) || 0, loc, qty: q, note: o.note || '' });
   });
   return { rows, errs, newSku: newSku.size, newLoc: newLoc.size };
 }
@@ -239,26 +243,21 @@ function download(sheets, name) {
 
 function viewData() {
   shell(`<div class="sec"><h2>Penerimaan dari Excel</h2>
-  <p class="hint">Kolom wajib: sku, lokasi, jumlah. Untuk SKU yang belum terdaftar, isi juga kolom nama. Kolom opsional: satuan, min_stok, catatan. SKU dan lokasi baru dibuat otomatis.</p>
+  <p class="hint">Kolom file: Part No, Material No, Desc, Qty, UoM, Location, Remarks. Part No dipakai sebagai kode unik barang. Barang dan lokasi baru dibuat otomatis.</p>
   <button class="btn ghost" id="tpl">Unduh template Excel</button>
   <label>Pilih file (.xlsx atau .csv)</label><input id="fl" type="file" accept=".xlsx,.xls,.csv">
   <div id="pv" style="margin-top:12px"></div></div>
   <div class="sec"><h2>Ekspor ke Excel</h2>
   <button class="btn ghost" id="e1">Stok saat ini</button>
   <button class="btn ghost" id="e2">Riwayat transaksi</button></div>`);
-  $('#tpl').onclick = () => download([['Penerimaan', [{ sku: 'KRD-001', nama: 'Kardus 40x30', lokasi: 'A-01-1', jumlah: 100, satuan: 'pcs', min_stok: 50, catatan: 'SJ-0001' }]]], 'template_penerimaan');
-  $('#fl').onchange = async e => {
-    const f = e.target.files[0]; if (!f) return;
-    try {
-      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
-      const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
-      if (!raw.length) return toast('File kosong', true);
-      pending = parseRows(raw);
-    } catch (err) { return toast('File tidak bisa dibaca: ' + err.message, true); }
-    const p = pending;
+  $('#tpl').onclick = () => download([['Penerimaan', [{ 'Part No': 'KRD-001', 'Material No': 'MAT-0001', 'Desc': 'Kardus 40x30', 'Qty': 100, 'UoM': 'pcs', 'Location': 'A-01-1', 'Remarks': 'SJ-0001' }]]], 'template_penerimaan');
+  let raw = null;
+  const preview = () => {
+    if (!raw) return;
+    const p = parseRows(raw);
     $('#pv').innerHTML = `<div class="card"><b>${p.rows.length} baris valid</b>
-      <div class="sku">${p.newSku} SKU baru · ${p.newLoc} lokasi baru</div>
-      ${p.errs.length ? `<div class="errs" style="margin-top:8px">${p.errs.length} baris bermasalah, perbaiki file lalu unggah ulang:${p.errs.slice(0, 10).map(x => `<div>${esc(x)}</div>`).join('')}${p.errs.length > 10 ? `<div>dan ${p.errs.length - 10} lainnya</div>` : ''}</div>` : ''}</div>
+      <div class="sku">${p.newSku} Part No baru · ${p.newLoc} lokasi baru</div>
+      ${p.errs.length ? `<div class="errs" style="margin-top:8px">${p.errs.length} baris bermasalah, perbaiki lalu coba lagi:${p.errs.slice(0, 10).map(x => `<div>${esc(x)}</div>`).join('')}${p.errs.length > 10 ? `<div>dan ${p.errs.length - 10} lainnya</div>` : ''}</div>` : ''}</div>
       <button class="btn in" id="go" ${p.errs.length || !p.rows.length ? 'disabled' : ''}>Proses penerimaan (${p.rows.length} baris)</button>`;
     $('#go').onclick = async () => {
       $('#go').disabled = true;
@@ -266,17 +265,26 @@ function viewData() {
         const { error } = await sb.rpc('receive_bulk', { p_rows: p.rows.slice(i, i + 500) });
         if (error) { await load(); $('#go').disabled = false; return toast('Gagal: ' + error.message, true); }
       }
-      await load(); pending = null; toast(`${p.rows.length} baris berhasil diterima`); viewData();
+      await load(); toast(`${p.rows.length} baris berhasil diterima`); viewData();
     };
   };
+  $('#fl').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      if (!raw.length) { raw = null; return toast('File kosong', true); }
+    } catch (err) { return toast('File tidak bisa dibaca: ' + err.message, true); }
+    preview();
+  };
   $('#e1').onclick = () => download([
-    ['Stok per lokasi', stock.map(s => { const i = items.find(x => x.id === s.item_id) || {}; return { SKU: i.sku, Nama: i.name, Satuan: i.unit, Lokasi: locCode(s.location_id), Jumlah: s.qty }; })],
-    ['Total per barang', items.map(i => ({ SKU: i.sku, Nama: i.name, Satuan: i.unit, Total: total(i.id), 'Batas menipis': i.min_stock }))]
+    ['Stok per lokasi', stock.map(s => { const i = items.find(x => x.id === s.item_id) || {}; return { 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, UoM: i.unit, Lokasi: locCode(s.location_id), Qty: s.qty }; })],
+    ['Total per barang', items.map(i => ({ 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, UoM: i.unit, Total: total(i.id), 'Batas menipis': i.min_stock }))]
   ], 'stok');
   $('#e2').onclick = async () => {
     try {
       const mv = await all('movements', q => q.order('created_at', { ascending: false }).order('id', { ascending: false }));
-      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Tipe: m.type === 'IN' ? 'Masuk' : 'Keluar', SKU: i.sku, Nama: i.name, Lokasi: locCode(m.location_id), Jumlah: m.qty, Catatan: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
+      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Tipe: m.type === 'IN' ? 'Masuk' : 'Keluar', 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, Lokasi: locCode(m.location_id), Qty: m.qty, Remarks: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
     } catch (err) { toast('Gagal ekspor: ' + err.message, true); }
   };
 }
