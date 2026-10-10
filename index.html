@@ -297,10 +297,9 @@ function viewData() {
   };
 }
 
-sb.auth.onAuthStateChange(async (_e, session) => {
+sb.auth.onAuthStateChange((_e, session) => {
   user = session ? session.user : null;
-  if (user) await load();
-  render();
+  setTimeout(async () => { if (user) await load(); render(); }, 0);
 });
 sb.auth.getSession().then(({ data }) => { if (!data.session) render(); });
 window.__ok = true;
