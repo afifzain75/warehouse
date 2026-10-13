@@ -111,7 +111,7 @@ function shell(body) {
   <main>${body}</main>
   <nav>${tabs.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
   $('#lo').onclick = () => sb.auth.signOut();
-  document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; pending = null; render(); });
+  document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; pending = null; openMove = null; render(); });
 }
 function render() {
   if (!user) return renderLogin();
@@ -201,15 +201,47 @@ function viewOut() {
   };
 }
 
+let selLoc = '', openMove = null;
 function viewLoc() {
-  shell(`<h2>Cek lokasi</h2><select id="lc">${opts(locs, l => l.code, 'Pilih lokasi')}</select><div id="ls" style="margin-top:12px"></div>`);
-  $('#lc').onchange = () => {
-    const rows = stock.filter(s => s.location_id === $('#lc').value);
-    $('#ls').innerHTML = rows.length ? rows.map(s => {
+  shell(`<h2>Cek lokasi</h2><select id="lc">${opts(locs, l => l.code, 'Pilih lokasi')}</select>
+  <datalist id="dl">${locs.map(l => `<option value="${esc(l.code)}">`).join('')}</datalist>
+  <div id="ls" style="margin-top:12px"></div>`);
+  $('#lc').value = selLoc;
+  const draw = () => {
+    selLoc = $('#lc').value;
+    const rows = stock.filter(s => s.location_id === selLoc);
+    $('#ls').innerHTML = !selLoc ? '' : rows.length ? rows.map(s => {
       const i = items.find(x => x.id === s.item_id) || {};
-      return `<div class="card row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}${i.material_no ? ' · Mat ' + esc(i.material_no) : ''}</div></div><div class="tot">${s.qty} <small>${esc(i.unit)}</small></div></div>`;
+      return `<div class="card"><div class="row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}${i.material_no ? ' · Mat ' + esc(i.material_no) : ''}</div></div><div class="tot">${s.qty} <small>${esc(i.unit)}</small></div></div>
+      ${openMove === s.item_id
+        ? `<label>Lokasi tujuan</label><input id="mt" list="dl" placeholder="pilih atau ketik lokasi baru" autocapitalize="characters">
+           <label>Qty yang dipindahkan</label><input id="mq" type="number" inputmode="numeric" min="1" max="${s.qty}" value="${s.qty}">
+           <button class="btn" data-ok="${s.item_id}">Simpan perpindahan</button>
+           <button class="btn ghost" data-cancel="1">Batal</button>`
+        : `<button class="btn ghost" data-mv="${s.item_id}">Pindahkan</button>`}</div>`;
     }).join('') : '<div class="empty">Lokasi ini kosong.</div>';
   };
+  $('#lc').onchange = () => { openMove = null; draw(); };
+  $('#ls').onclick = async e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    if (btn.dataset.mv) { openMove = btn.dataset.mv; return draw(); }
+    if (btn.dataset.cancel) { openMove = null; return draw(); }
+    if (!btn.dataset.ok) return;
+    const to = $('#mt').value.trim().toUpperCase(), q = parseInt($('#mq').value, 10);
+    if (!to || !q || q < 1) return toast('Isi lokasi tujuan dan Qty', true);
+    if (to === locCode(selLoc)) return toast('Lokasi tujuan sama dengan lokasi asal', true);
+    btn.disabled = true;
+    let dest = locs.find(l => l.code === to);
+    if (!dest) {
+      const r = await sb.from('locations').insert({ code: to }).select().single();
+      if (r.error) { btn.disabled = false; return toast(r.error.message, true); }
+      dest = r.data;
+    }
+    const { error } = await sb.rpc('move_location', { p_item: btn.dataset.ok, p_from: selLoc, p_to: dest.id, p_qty: q });
+    if (error) { btn.disabled = false; return toast(error.message, true); }
+    await load(); openMove = null; toast('Dipindahkan ke ' + to); viewLoc();
+  };
+  draw();
 }
 
 // ---------- Impor & ekspor Excel ----------
@@ -292,16 +324,16 @@ function viewData() {
   $('#e2').onclick = async () => {
     try {
       const mv = await all('movements', q => q.order('created_at', { ascending: false }).order('id', { ascending: false }));
-      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Tipe: m.type === 'IN' ? 'Masuk' : 'Keluar', 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, Lokasi: locCode(m.location_id), Qty: m.qty, Remarks: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
+      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Tipe: ({ IN: 'Masuk', OUT: 'Keluar', MOVE_OUT: 'Pindah keluar', MOVE_IN: 'Pindah masuk' })[m.type] || m.type, 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, Lokasi: locCode(m.location_id), Qty: m.qty, Remarks: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
     } catch (err) { toast('Gagal ekspor: ' + err.message, true); }
   };
 }
 
+// Jangan memanggil Supabase langsung di dalam callback ini (bisa macet), jadi ditunda dengan setTimeout
 sb.auth.onAuthStateChange((_e, session) => {
   user = session ? session.user : null;
   setTimeout(async () => { if (user) await load(); render(); }, 0);
 });
-sb.auth.getSession().then(({ data }) => { if (!data.session) render(); });
 window.__ok = true;
 </script>
 </body>
