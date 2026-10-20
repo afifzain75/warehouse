@@ -66,7 +66,7 @@ if (!SB_KEY || SB_KEY.indexOf('ISI_') === 0 || /\s/.test(SB_KEY)) fatal('SB_KEY 
 const sb = supabase.createClient(SB_URL, SB_KEY);
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let items = [], locs = [], stock = [], tab = 'stok', user = null, pending = null;
+let items = [], locs = [], stock = [], tab = 'stok', user = null, pending = null, isAdmin = false;
 
 try {
   const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#1e90d6"/><rect x="22" y="30" width="56" height="42" fill="#ffffff"/><path d="M22 46h56" stroke="#1e90d6" stroke-width="5"/></svg>');
@@ -103,15 +103,16 @@ async function load() {
       all('stock', q => q.gt('qty', 0).order('item_id').order('location_id'))
     ]);
   } catch (e) { toast('Gagal memuat data: ' + e.message, true); }
+  const r = await sb.rpc('is_admin'); isAdmin = !r.error && r.data === true;
 }
 
 function shell(body) {
   const tabs = [['stok','Stok'],['in','Terima'],['out','Keluar'],['lok','Lokasi'],['data','Data']];
-  $('#app').innerHTML = `<header><b>Gudang</b><button id="lo">Keluar akun</button></header>
+  $('#app').innerHTML = `<header><b>Gudang${isAdmin ? ' · Admin' : ''}</b><button id="lo">Keluar akun</button></header>
   <main>${body}</main>
   <nav>${tabs.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
   $('#lo').onclick = () => sb.auth.signOut();
-  document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; pending = null; openMove = null; render(); });
+  document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; pending = null; openMove = null; openAdj = null; render(); });
 }
 function render() {
   if (!user) return renderLogin();
@@ -130,6 +131,7 @@ function renderLogin() {
   };
 }
 
+let openAdj = null;
 function viewStock() {
   shell(`<h2>Cek stok</h2><input id="q" placeholder="Cari nama atau SKU" type="search"><div id="ls" style="margin-top:12px"></div>`);
   const draw = () => {
@@ -137,14 +139,38 @@ function viewStock() {
     const rows = items.filter(i => (i.name + i.sku + (i.material_no || '')).toLowerCase().includes(q));
     $('#ls').innerHTML = rows.length ? rows.slice(0, 100).map(i => {
       const t = total(i.id), ss = stock.filter(s => s.item_id === i.id);
+      const adj = !isAdmin ? '' : openAdj === i.id
+        ? `<label>Lokasi</label><select id="al">${opts(locs, l => { const s = ss.find(x => x.location_id === l.id); return `${l.code} (stok ${s ? s.qty : 0})`; }, 'Pilih lokasi')}</select>
+           <label>Jumlah sebenarnya (hasil hitung)</label><input id="aq" type="number" inputmode="numeric" min="0">
+           <label>Alasan (wajib)</label><input id="ar" placeholder="contoh: stock opname">
+           <button class="btn" data-aok="${i.id}">Simpan penyesuaian</button>
+           <button class="btn ghost" data-acancel="1">Batal</button>`
+        : `<button class="btn ghost" data-adj="${i.id}">Sesuaikan stok</button>`;
       return `<div class="card"><div class="row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}${i.material_no ? ' · Mat ' + esc(i.material_no) : ''}</div></div>
       <div class="tot">${t} <small>${esc(i.unit)}</small></div></div>
       ${t <= i.min_stock ? '<div class="low">Stok menipis</div>' : ''}
-      <div class="locs">${ss.length ? ss.map(s => `<span>${esc(locCode(s.location_id))}: ${s.qty}</span>`).join('') : 'Belum ada stok'}</div></div>`;
+      <div class="locs">${ss.length ? ss.map(s => `<span>${esc(locCode(s.location_id))}: ${s.qty}</span>`).join('') : 'Belum ada stok'}</div>${adj}</div>`;
     }).join('') + (rows.length > 100 ? `<div class="hint">Menampilkan 100 dari ${rows.length} barang. Persempit pencarian.</div>` : '')
       : `<div class="empty">${items.length ? 'Barang tidak ditemukan.' : 'Belum ada barang. Impor data penerimaan di tab Data.'}</div>`;
+    if (openAdj && $('#al')) {
+      const ss = stock.filter(s => s.item_id === openAdj);
+      if (ss.length === 1) $('#al').value = ss[0].location_id;
+    }
   };
-  $('#q').oninput = draw; draw();
+  $('#q').oninput = draw;
+  $('#ls').onclick = async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.adj) { openAdj = b.dataset.adj; return draw(); }
+    if (b.dataset.acancel) { openAdj = null; return draw(); }
+    if (!b.dataset.aok) return;
+    const loc = $('#al').value, nq = parseInt($('#aq').value, 10), why = $('#ar').value.trim();
+    if (!loc || !Number.isInteger(nq) || nq < 0 || !why) return toast('Lengkapi lokasi, jumlah sebenarnya, dan alasan', true);
+    b.disabled = true;
+    const { error } = await sb.rpc('adjust_stock', { p_item: b.dataset.aok, p_loc: loc, p_new_qty: nq, p_reason: why });
+    if (error) { b.disabled = false; return toast(error.message, true); }
+    await load(); openAdj = null; toast('Penyesuaian tersimpan'); viewStock();
+  };
+  draw();
 }
 
 function viewIn() {
@@ -324,7 +350,7 @@ function viewData() {
   $('#e2').onclick = async () => {
     try {
       const mv = await all('movements', q => q.order('created_at', { ascending: false }).order('id', { ascending: false }));
-      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Tipe: ({ IN: 'Masuk', OUT: 'Keluar', MOVE_OUT: 'Pindah keluar', MOVE_IN: 'Pindah masuk' })[m.type] || m.type, 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, Lokasi: locCode(m.location_id), Qty: m.qty, Remarks: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
+      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Tipe: ({ IN: 'Masuk', OUT: 'Keluar', MOVE_OUT: 'Pindah keluar', MOVE_IN: 'Pindah masuk', ADJ_IN: 'Koreksi tambah', ADJ_OUT: 'Koreksi kurang' })[m.type] || m.type, 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, Lokasi: locCode(m.location_id), Qty: m.qty, Remarks: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
     } catch (err) { toast('Gagal ekspor: ' + err.message, true); }
   };
 }
