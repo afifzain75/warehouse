@@ -82,6 +82,7 @@ function toast(t, err) {
 }
 const opts = (arr, fn, first) => (first ? `<option value="">${first}</option>` : '') + arr.map(x => `<option value="${x.id}">${esc(fn(x))}</option>`).join('');
 const total = id => stock.filter(s => s.item_id === id).reduce((a, s) => a + s.qty, 0);
+const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const locCode = id => (locs.find(l => l.id === id) || {}).code || '?';
 
 // Supabase membatasi 1000 baris per permintaan, jadi diambil bertahap
@@ -180,6 +181,7 @@ function viewIn() {
   <label>Barang</label><select id="it"></select>
   <label>Simpan ke lokasi</label><select id="lc">${opts(locs, l => l.code, 'Pilih lokasi')}</select>
   <label>Jumlah</label><input id="qt" type="number" inputmode="numeric" min="1">
+  <label>Tanggal transaksi</label><input id="dt" type="date" value="${today()}" max="${today()}">
   <label>Nomor surat jalan / catatan</label><input id="nt">
   <button class="btn in" id="sv">Simpan penerimaan</button>`);
   const fill = () => {
@@ -191,8 +193,9 @@ function viewIn() {
   $('#sv').onclick = async () => {
     const it = $('#it').value, lc = $('#lc').value, qt = parseInt($('#qt').value, 10);
     if (!it || !lc || !qt || qt < 1) return toast('Lengkapi barang, lokasi, dan jumlah', true);
+    if (!$('#dt').value || $('#dt').value > today()) return toast('Tanggal transaksi tidak valid', true);
     $('#sv').disabled = true;
-    const { error } = await sb.rpc('move_stock', { p_item: it, p_loc: lc, p_type: 'IN', p_qty: qt, p_note: $('#nt').value.trim() || null });
+    const { error } = await sb.rpc('move_stock_on', { p_item: it, p_loc: lc, p_type: 'IN', p_qty: qt, p_note: $('#nt').value.trim() || null, p_date: $('#dt').value });
     if (error) { $('#sv').disabled = false; return toast(error.message, true); }
     await load(); toast('Penerimaan tersimpan'); viewIn();
   };
@@ -204,6 +207,7 @@ function viewOut() {
   <label>Barang</label><select id="it"></select>
   <label>Ambil dari lokasi</label><select id="lc"><option value="">Pilih barang dulu</option></select>
   <label>Jumlah</label><input id="qt" type="number" inputmode="numeric" min="1">
+  <label>Tanggal transaksi</label><input id="dt" type="date" value="${today()}" max="${today()}">
   <label>Tujuan / nomor pesanan</label><input id="nt">
   <button class="btn out" id="sv">Simpan pengeluaran</button>`);
   const fill = () => {
@@ -220,8 +224,9 @@ function viewOut() {
   $('#sv').onclick = async () => {
     const it = $('#it').value, lc = $('#lc').value, qt = parseInt($('#qt').value, 10);
     if (!it || !lc || !qt || qt < 1) return toast('Lengkapi barang, lokasi, dan jumlah', true);
+    if (!$('#dt').value || $('#dt').value > today()) return toast('Tanggal transaksi tidak valid', true);
     $('#sv').disabled = true;
-    const { error } = await sb.rpc('move_stock', { p_item: it, p_loc: lc, p_type: 'OUT', p_qty: qt, p_note: $('#nt').value.trim() || null });
+    const { error } = await sb.rpc('move_stock_on', { p_item: it, p_loc: lc, p_type: 'OUT', p_qty: qt, p_note: $('#nt').value.trim() || null, p_date: $('#dt').value });
     if (error) { $('#sv').disabled = false; return toast(error.message, true); }
     await load(); toast('Pengeluaran tersimpan'); viewOut();
   };
@@ -350,7 +355,7 @@ function viewData() {
   $('#e2').onclick = async () => {
     try {
       const mv = await all('movements', q => q.order('created_at', { ascending: false }).order('id', { ascending: false }));
-      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Tipe: ({ IN: 'Masuk', OUT: 'Keluar', MOVE_OUT: 'Pindah keluar', MOVE_IN: 'Pindah masuk', ADJ_IN: 'Koreksi tambah', ADJ_OUT: 'Koreksi kurang' })[m.type] || m.type, 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, Lokasi: locCode(m.location_id), Qty: m.qty, Remarks: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
+      download([['Riwayat', mv.map(m => { const i = items.find(x => x.id === m.item_id) || {}; return { Waktu: new Date(m.created_at).toLocaleString('id-ID'), Diinput: new Date(m.entered_at || m.created_at).toLocaleString('id-ID'), Tipe: ({ IN: 'Masuk', OUT: 'Keluar', MOVE_OUT: 'Pindah keluar', MOVE_IN: 'Pindah masuk', ADJ_IN: 'Koreksi tambah', ADJ_OUT: 'Koreksi kurang' })[m.type] || m.type, 'Part No': i.sku, 'Material No': i.material_no || '', Desc: i.name, Lokasi: locCode(m.location_id), Qty: m.qty, Remarks: m.note || '', Petugas: m.user_email || '' }; })]], 'riwayat');
     } catch (err) { toast('Gagal ekspor: ' + err.message, true); }
   };
 }
