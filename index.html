@@ -37,11 +37,51 @@ input,select{width:100%;font:inherit;padding:12px;border:1px solid var(--line);b
 .empty{color:var(--mut);text-align:center;padding:24px 0}
 .sec{margin-bottom:32px}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0)}
-nav button{flex:1;padding:12px 2px;border:0;background:none;color:var(--mut);font:inherit;font-size:13px;border-top:3px solid transparent}
+nav button{flex:1;padding:12px 2px;border:0;background:none;color:var(--mut);font:inherit;font-size:12px;border-top:3px solid transparent}
 nav button.on{color:var(--ink);font-weight:700;border-top-color:var(--acc)}
 #toast{position:fixed;left:16px;right:16px;bottom:80px;padding:12px 14px;border-radius:var(--r);background:var(--ink);color:#fff;display:none;z-index:9}
 #toast.err{background:var(--out)}
 #login{max-width:360px;margin:12vh auto;padding:0 16px}
+
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;text-align:left;font:inherit;color:var(--ink);transition:transform .15s,border-color .2s}
+button.kpi{cursor:pointer}.kpi:active{transform:scale(.97)}
+.kpi small{display:block;color:var(--mut);font-size:13px}
+.kpi b{font-size:26px;display:block}
+.kpi.warn b{color:var(--out)}
+.low-list{overflow:hidden;max-height:0;transition:max-height .4s ease}
+.low-list.open{max-height:700px}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--mut);margin:6px 0 10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px}
+.bi{background:var(--pri)}.bo{background:var(--out)}
+.bars{display:flex;gap:6px;height:170px}
+.day{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;cursor:pointer}
+.pair{display:flex;gap:3px;align-items:flex-end;height:140px;width:100%;justify-content:center}
+.b{display:block;width:40%;max-width:16px;height:0;min-height:2px;border-radius:4px 4px 0 0;transition:height .8s cubic-bezier(.2,.8,.2,1)}
+.bars.go .b{height:var(--h)}
+.day span{font-size:11px;color:var(--mut);margin-top:6px;white-space:nowrap}
+.day.sel span{color:var(--ink);font-weight:700}
+.hrow{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:14px;cursor:pointer}
+.hrow span{width:64px;overflow:hidden;text-overflow:ellipsis}
+.track{flex:1;height:10px;border-radius:6px;background:var(--line);overflow:hidden}
+.track i{display:block;height:100%;width:0;background:var(--acc);transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.go .track i{width:var(--w)}
+.boot{display:flex;flex-direction:column;align-items:center;justify-content:center;height:70vh;color:var(--mut)}
+.boot i{width:36px;height:36px;border:4px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}
+@keyframes up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes toastin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+main{animation:up .28s ease both}
+#ls.anim .card{animation:up .3s ease both}
+#ls.anim .card:nth-child(2){animation-delay:.04s}#ls.anim .card:nth-child(3){animation-delay:.08s}
+#ls.anim .card:nth-child(4){animation-delay:.12s}#ls.anim .card:nth-child(5){animation-delay:.16s}
+#ls.anim .card:nth-child(n+6){animation-delay:.2s}
+.card label,.card input,.card select{animation:fade .25s ease both}
+.btn{transition:transform .12s,opacity .2s}.btn:active{transform:scale(.98)}
+#toast{animation:toastin .25s ease}
+nav button{transition:color .2s,border-color .2s}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
@@ -66,7 +106,7 @@ if (!SB_KEY || SB_KEY.indexOf('ISI_') === 0 || /\s/.test(SB_KEY)) fatal('SB_KEY 
 const sb = supabase.createClient(SB_URL, SB_KEY);
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let items = [], locs = [], stock = [], tab = 'stok', user = null, pending = null, isAdmin = false;
+let items = [], locs = [], stock = [], tab = 'home', user = null, pending = null, isAdmin = false;
 
 try {
   const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#1e90d6"/><rect x="22" y="30" width="56" height="42" fill="#ffffff"/><path d="M22 46h56" stroke="#1e90d6" stroke-width="5"/></svg>');
@@ -108,7 +148,7 @@ async function load() {
 }
 
 function shell(body) {
-  const tabs = [['stok','Stok'],['in','Terima'],['out','Keluar'],['lok','Lokasi'],['data','Data']];
+  const tabs = [['home','Beranda'],['stok','Stok'],['in','Terima'],['out','Keluar'],['lok','Lokasi'],['data','Data']];
   $('#app').innerHTML = `<header><b>Gudang${isAdmin ? ' · Admin' : ''}</b><button id="lo">Keluar akun</button></header>
   <main>${body}</main>
   <nav>${tabs.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
@@ -117,7 +157,7 @@ function shell(body) {
 }
 function render() {
   if (!user) return renderLogin();
-  ({stok: viewStock, in: viewIn, out: viewOut, lok: viewLoc, data: viewData})[tab]();
+  ({home: viewHome, stok: viewStock, in: viewIn, out: viewOut, lok: viewLoc, data: viewData})[tab]();
 }
 function renderLogin() {
   $('#app').innerHTML = `<div id="login"><h2>Masuk ke Gudang</h2>
@@ -130,6 +170,66 @@ function renderLogin() {
     const { error } = await sb.auth.signInWithPassword({ email, password: $('#pw').value });
     if (error) toast(/invalid login/i.test(error.message) ? 'ID atau kata sandi salah' : /not confirmed/i.test(error.message) ? 'Akun belum dikonfirmasi di Supabase' : 'Gagal masuk: ' + error.message, true);
   };
+}
+
+const flash = el => { el.classList.add('anim'); setTimeout(() => el.classList.remove('anim'), 700); };
+function countUp(el, to) {
+  const t0 = performance.now(), dur = 700;
+  const step = t => { const p = Math.min(1, (t - t0) / dur); el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))).toLocaleString('id-ID'); if (p < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+const afterPaint = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
+
+function viewHome() {
+  const lowItems = items.filter(i => total(i.id) <= i.min_stock);
+  const totalQty = stock.reduce((a, s) => a + s.qty, 0);
+  const byLoc = {}; stock.forEach(s => { byLoc[s.location_id] = (byLoc[s.location_id] || 0) + s.qty; });
+  const top = Object.entries(byLoc).sort((a, b) => b[1] - a[1]).slice(0, 5), mx = top.length ? top[0][1] : 1;
+  shell(`<h2>Ringkasan</h2>
+  <div class="kpis">
+    <button class="kpi" data-go="stok"><small>Total Part No</small><b data-n="${items.length}">0</b></button>
+    <div class="kpi"><small>Total Qty</small><b data-n="${totalQty}">0</b></div>
+    <button class="kpi ${lowItems.length ? 'warn' : ''}" id="lowb"><small>Stok menipis (ketuk)</small><b data-n="${lowItems.length}">0</b></button>
+    <div class="kpi"><small>Transaksi hari ini</small><b id="tdy">…</b></div>
+  </div>
+  <div class="low-list" id="lowl">${lowItems.slice(0, 8).map(i => `<div class="card row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}</div></div><div class="low">${total(i.id)} / min ${i.min_stock}</div></div>`).join('')}${lowItems.length > 8 ? `<div class="hint" style="margin-bottom:10px">dan ${lowItems.length - 8} lainnya di tab Stok</div>` : ''}</div>
+  <div class="card"><b>Masuk dan keluar, 7 hari terakhir</b>
+    <div class="legend"><span><i class="bi"></i>Masuk</span><span><i class="bo"></i>Keluar</span></div>
+    <div id="ch" class="hint">Memuat grafik…</div></div>
+  <div class="card" id="tl"><b>5 lokasi dengan stok terbanyak</b>
+    ${top.length ? top.map(([id, q]) => `<div class="hrow" data-loc="${id}"><span>${esc(locCode(id))}</span><div class="track"><i style="--w:${q / mx * 100}%"></i></div><b>${q}</b></div>`).join('') : '<div class="empty">Belum ada stok.</div>'}</div>`);
+  document.querySelectorAll('[data-n]').forEach(el => countUp(el, +el.dataset.n));
+  afterPaint(() => { const t = $('#tl'); if (t) t.classList.add('go'); });
+  $('#lowb').onclick = () => $('#lowl').classList.toggle('open');
+  document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { tab = b.dataset.go; render(); });
+  document.querySelectorAll('[data-loc]').forEach(r => r.onclick = () => { selLoc = r.dataset.loc; tab = 'lok'; render(); });
+  (async () => {
+    try {
+      const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
+      const mv = await all('movements', q => q.gte('created_at', since.toISOString()).order('created_at').order('id'));
+      if (tab !== 'home' || !$('#ch')) return;
+      const days = [];
+      for (let k = 6; k >= 0; k--) { const d = new Date(); d.setDate(d.getDate() - k); days.push({ key: d.toDateString(), label: d.toLocaleDateString('id-ID', { weekday: 'short' }) + ' ' + d.getDate(), inn: 0, out: 0 }); }
+      let cnt = 0;
+      mv.forEach(m => {
+        if (m.type !== 'IN' && m.type !== 'OUT') return;
+        const d = days.find(x => x.key === new Date(m.created_at).toDateString()); if (!d) return;
+        if (m.type === 'IN') d.inn += m.qty; else d.out += m.qty;
+        if (d === days[6]) cnt++;
+      });
+      countUp($('#tdy'), cnt);
+      const max = Math.max(1, ...days.flatMap(d => [d.inn, d.out]));
+      $('#ch').className = '';
+      $('#ch').innerHTML = `<div class="bars">${days.map((d, k) => `<div class="day" data-k="${k}"><div class="pair"><i class="b bi" style="--h:${d.inn / max * 100}%"></i><i class="b bo" style="--h:${d.out / max * 100}%"></i></div><span>${esc(d.label)}</span></div>`).join('')}</div><div class="hint" id="cv" style="margin-top:8px">Ketuk satu hari untuk melihat rincian</div>`;
+      $('#ch').onclick = e => {
+        const el = e.target.closest('.day'); if (!el) return;
+        const d = days[+el.dataset.k];
+        document.querySelectorAll('.day').forEach(x => x.classList.toggle('sel', x === el));
+        $('#cv').textContent = `${d.label}: masuk ${d.inn}, keluar ${d.out}`;
+      };
+      afterPaint(() => { const b = $('.bars'); if (b) b.classList.add('go'); });
+    } catch (err) { if ($('#ch')) $('#ch').textContent = 'Grafik tidak bisa dimuat'; if ($('#tdy')) $('#tdy').textContent = '-'; }
+  })();
 }
 
 let openAdj = null;
@@ -171,6 +271,7 @@ function viewStock() {
     if (error) { b.disabled = false; return toast(error.message, true); }
     await load(); openAdj = null; toast('Penyesuaian tersimpan'); viewStock();
   };
+  flash($('#ls'));
   draw();
 }
 
@@ -252,7 +353,7 @@ function viewLoc() {
         : `<button class="btn ghost" data-mv="${s.item_id}">Pindahkan</button>`}</div>`;
     }).join('') : '<div class="empty">Lokasi ini kosong.</div>';
   };
-  $('#lc').onchange = () => { openMove = null; draw(); };
+  $('#lc').onchange = () => { openMove = null; flash($('#ls')); draw(); };
   $('#ls').onclick = async e => {
     const btn = e.target.closest('button'); if (!btn) return;
     if (btn.dataset.mv) { openMove = btn.dataset.mv; return draw(); }
@@ -272,6 +373,7 @@ function viewLoc() {
     if (error) { btn.disabled = false; return toast(error.message, true); }
     await load(); openMove = null; toast('Dipindahkan ke ' + to); viewLoc();
   };
+  flash($('#ls'));
   draw();
 }
 
@@ -361,9 +463,15 @@ function viewData() {
 }
 
 // Jangan memanggil Supabase langsung di dalam callback ini (bisa macet), jadi ditunda dengan setTimeout
-sb.auth.onAuthStateChange((_e, session) => {
+sb.auth.onAuthStateChange((evt, session) => {
+  const was = user;
   user = session ? session.user : null;
-  setTimeout(async () => { if (user) await load(); render(); }, 0);
+  if (evt === 'TOKEN_REFRESHED' || evt === 'USER_UPDATED') return;
+  if (evt === 'SIGNED_IN' && user && was && was.id === user.id) return;
+  setTimeout(async () => {
+    if (user) { $('#app').innerHTML = '<div class="boot"><i></i>Memuat data…</div>'; await load(); }
+    render();
+  }, 0);
 });
 window.__ok = true;
 </script>
