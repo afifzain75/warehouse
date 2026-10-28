@@ -82,6 +82,7 @@ main{animation:up .28s ease both}
 #toast{animation:toastin .25s ease}
 nav button{transition:color .2s,border-color .2s}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.x{border:0;background:none;color:var(--out);font:inherit;font-size:18px;padding:2px 6px;margin-left:6px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -92,7 +93,7 @@ nav button{transition:color .2s,border-color .2s}
 <script>
 // ====== ISI DUA BARIS INI (Supabase > Project Settings > API) ======
 const SB_URL = 'https://pghvtzfyuxhafdnmwsfh.supabase.co';
-const SB_KEY = 'sb_publishable_C6hAkHr94fiLXlNY5ypV_w_rvHXx4QN';
+const SB_KEY = 'ISI_ANON_PUBLIC_KEY';
 // ==================================================================
 
 function fatal(msg) {
@@ -275,62 +276,66 @@ function viewStock() {
   draw();
 }
 
-function viewIn() {
-  shell(`<h2>Penerimaan barang</h2>
-  <p class="hint">Untuk barang atau lokasi baru, dan penerimaan banyak sekaligus, gunakan tab Data.</p>
-  <label>Cari barang</label><input id="fq" type="search" placeholder="Ketik nama atau SKU">
+const carts = { in: [], out: [] };
+function viewIn() { viewTx(true); }
+function viewOut() { viewTx(false); }
+function viewTx(isIn) {
+  const cart = carts[isIn ? 'in' : 'out'];
+  shell(`<h2>${isIn ? 'Penerimaan barang' : 'Pengeluaran barang'}</h2>
+  ${isIn ? '<p class="hint">Untuk barang atau lokasi baru, dan penerimaan dari file Excel, gunakan tab Data.</p>' : ''}
+  <label>Cari barang</label><input id="fq" type="search" placeholder="Ketik Part No, Material No, atau nama">
   <label>Barang</label><select id="it"></select>
-  <label>Simpan ke lokasi</label><select id="lc">${opts(locs, l => l.code, 'Pilih lokasi')}</select>
+  <label>${isIn ? 'Simpan ke lokasi' : 'Ambil dari lokasi'}</label><select id="lc">${isIn ? opts(locs, l => l.code, 'Pilih lokasi') : '<option value="">Pilih barang dulu</option>'}</select>
   <label>Jumlah</label><input id="qt" type="number" inputmode="numeric" min="1">
+  <button class="btn ghost" id="ad">+ Tambah ke daftar</button>
+  <div id="cl" style="margin-top:12px"></div>
   <label>Tanggal transaksi</label><input id="dt" type="date" value="${today()}" max="${today()}">
-  <label>Nomor surat jalan / catatan</label><input id="nt">
-  <button class="btn in" id="sv">Simpan penerimaan</button>`);
+  <label>${isIn ? 'Nomor surat jalan / catatan' : 'Tujuan / nomor pesanan'}</label><input id="nt">
+  <button class="btn ${isIn ? 'in' : 'out'}" id="sv"></button>`);
   const fill = () => {
     const q = $('#fq').value.toLowerCase();
-    const r = items.filter(i => (i.name + i.sku + (i.material_no || '')).toLowerCase().includes(q)).slice(0, 100);
+    const r = items.filter(i => (isIn || total(i.id) > 0) && (i.name + i.sku + (i.material_no || '')).toLowerCase().includes(q)).slice(0, 100);
     $('#it').innerHTML = opts(r, i => `${i.sku} · ${i.name}`, r.length ? 'Pilih barang' : 'Tidak ada barang');
+    if (!isIn) $('#lc').innerHTML = '<option value="">Pilih barang dulu</option>';
   };
-  $('#fq').oninput = fill; fill();
-  $('#sv').onclick = async () => {
+  const drawCart = () => {
+    $('#cl').innerHTML = cart.length ? `<b>Daftar ${isIn ? 'penerimaan' : 'pengeluaran'} (${cart.length} baris)</b>` + cart.map((c, k) => {
+      const i = items.find(x => x.id === c.item) || {};
+      return `<div class="card row" style="margin-top:8px"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)} · ${esc(locCode(c.loc))}</div></div><div class="tot">${c.qty} <small>${esc(i.unit)}</small><button class="x" data-rm="${k}">✕</button></div></div>`;
+    }).join('') : '';
+    $('#sv').textContent = cart.length ? `Simpan semua (${cart.length} baris)` : (isIn ? 'Simpan penerimaan' : 'Simpan pengeluaran');
+  };
+  const addLine = () => {
     const it = $('#it').value, lc = $('#lc').value, qt = parseInt($('#qt').value, 10);
-    if (!it || !lc || !qt || qt < 1) return toast('Lengkapi barang, lokasi, dan jumlah', true);
-    if (!$('#dt').value || $('#dt').value > today()) return toast('Tanggal transaksi tidak valid', true);
-    $('#sv').disabled = true;
-    const { error } = await sb.rpc('move_stock_on', { p_item: it, p_loc: lc, p_type: 'IN', p_qty: qt, p_note: $('#nt').value.trim() || null, p_date: $('#dt').value });
-    if (error) { $('#sv').disabled = false; return toast(error.message, true); }
-    await load(); toast('Penerimaan tersimpan'); viewIn();
+    if (!it || !lc || !qt || qt < 1) { toast('Pilih barang, lokasi, dan isi jumlah', true); return false; }
+    const ex = cart.find(c => c.item === it && c.loc === lc), want = (ex ? ex.qty : 0) + qt;
+    if (!isIn) {
+      const s = stock.find(x => x.item_id === it && x.location_id === lc);
+      if (!s || s.qty < want) { toast(`Stok di lokasi ini hanya ${s ? s.qty : 0}`, true); return false; }
+    }
+    if (ex) ex.qty = want; else cart.push({ item: it, loc: lc, qty: qt });
+    $('#qt').value = ''; $('#fq').value = ''; fill(); drawCart();
+    return true;
   };
-}
-
-function viewOut() {
-  shell(`<h2>Pengeluaran barang</h2>
-  <label>Cari barang</label><input id="fq" type="search" placeholder="Ketik nama atau SKU">
-  <label>Barang</label><select id="it"></select>
-  <label>Ambil dari lokasi</label><select id="lc"><option value="">Pilih barang dulu</option></select>
-  <label>Jumlah</label><input id="qt" type="number" inputmode="numeric" min="1">
-  <label>Tanggal transaksi</label><input id="dt" type="date" value="${today()}" max="${today()}">
-  <label>Tujuan / nomor pesanan</label><input id="nt">
-  <button class="btn out" id="sv">Simpan pengeluaran</button>`);
-  const fill = () => {
-    const q = $('#fq').value.toLowerCase();
-    const r = items.filter(i => total(i.id) > 0 && (i.name + i.sku + (i.material_no || '')).toLowerCase().includes(q)).slice(0, 100);
-    $('#it').innerHTML = opts(r, i => `${i.sku} · ${i.name}`, r.length ? 'Pilih barang' : 'Tidak ada barang');
-    $('#lc').innerHTML = '<option value="">Pilih barang dulu</option>';
-  };
-  $('#fq').oninput = fill; fill();
-  $('#it').onchange = () => {
+  $('#fq').oninput = fill;
+  if (!isIn) $('#it').onchange = () => {
     const rows = stock.filter(s => s.item_id === $('#it').value);
     $('#lc').innerHTML = rows.length ? opts(rows.map(s => ({ id: s.location_id, t: `${locCode(s.location_id)} (stok ${s.qty})` })), x => x.t, 'Pilih lokasi') : '<option value="">Tidak ada stok</option>';
   };
+  $('#ad').onclick = addLine;
+  $('#cl').onclick = e => { const b = e.target.closest('[data-rm]'); if (!b) return; cart.splice(+b.dataset.rm, 1); drawCart(); };
   $('#sv').onclick = async () => {
-    const it = $('#it').value, lc = $('#lc').value, qt = parseInt($('#qt').value, 10);
-    if (!it || !lc || !qt || qt < 1) return toast('Lengkapi barang, lokasi, dan jumlah', true);
-    if (!$('#dt').value || $('#dt').value > today()) return toast('Tanggal transaksi tidak valid', true);
+    if (($('#it').value || $('#qt').value) && !addLine()) return;
+    if (!cart.length) return toast('Daftar masih kosong', true);
+    const d = $('#dt').value;
+    if (!d || d > today()) return toast('Tanggal transaksi tidak valid', true);
     $('#sv').disabled = true;
-    const { error } = await sb.rpc('move_stock_on', { p_item: it, p_loc: lc, p_type: 'OUT', p_qty: qt, p_note: $('#nt').value.trim() || null, p_date: $('#dt').value });
+    const { error } = await sb.rpc('move_stock_bulk', { p_rows: cart.map(c => ({ item: c.item, loc: c.loc, qty: c.qty })), p_type: isIn ? 'IN' : 'OUT', p_note: $('#nt').value.trim() || null, p_date: d });
     if (error) { $('#sv').disabled = false; return toast(error.message, true); }
-    await load(); toast('Pengeluaran tersimpan'); viewOut();
+    const n = cart.length; cart.length = 0;
+    await load(); toast(`${n} baris tersimpan`); viewTx(isIn);
   };
+  fill(); drawCart();
 }
 
 let selLoc = '', openMove = null;
