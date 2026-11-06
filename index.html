@@ -154,7 +154,7 @@ function shell(body) {
   <main>${body}</main>
   <nav>${tabs.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
   $('#lo').onclick = () => sb.auth.signOut();
-  document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; pending = null; openMove = null; openAdj = null; render(); });
+  document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; pending = null; openMove = null; openAdj = null; stopCam(); render(); });
 }
 function render() {
   if (!user) return renderLogin();
@@ -338,16 +338,29 @@ function viewTx(isIn) {
   fill(); drawCart();
 }
 
+let cam = null;
+async function stopCam() {
+  if (!cam) return;
+  const c = cam; cam = null;
+  try { await c.stop(); } catch (e) {}
+  try { c.clear(); } catch (e) {}
+}
 let selLoc = '', openMove = null;
 function viewLoc() {
-  shell(`<h2>Cek lokasi</h2><select id="lc">${opts(locs, l => l.code, 'Pilih lokasi')}</select>
+  shell(`<h2>Cek lokasi</h2>
+  <label>Scan barcode lokasi (bin)</label>
+  <input id="sc" placeholder="Ketuk di sini, lalu scan label bin" autocomplete="off" autocapitalize="characters">
+  <button class="btn ghost" id="cb">Scan dengan kamera</button>
+  <div id="rd" style="margin-top:10px"></div>
+  <label>Atau pilih lokasi manual</label><select id="lc">${opts(locs, l => l.code, 'Pilih lokasi')}</select>
   <datalist id="dl">${locs.map(l => `<option value="${esc(l.code)}">`).join('')}</datalist>
   <div id="ls" style="margin-top:12px"></div>`);
   $('#lc').value = selLoc;
+  const summary = rows => `<div class="card"><b>${esc(locCode(selLoc))}</b><div class="sku">${rows.length} Part No · total Qty ${rows.reduce((a, s) => a + s.qty, 0)}</div></div>`;
   const draw = () => {
     selLoc = $('#lc').value;
     const rows = stock.filter(s => s.location_id === selLoc);
-    $('#ls').innerHTML = !selLoc ? '' : rows.length ? rows.map(s => {
+    $('#ls').innerHTML = !selLoc ? '' : summary(rows) + (rows.length ? rows.map(s => {
       const i = items.find(x => x.id === s.item_id) || {};
       return `<div class="card"><div class="row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}${i.material_no ? ' · Mat ' + esc(i.material_no) : ''}</div></div><div class="tot">${s.qty} <small>${esc(i.unit)}</small></div></div>
       ${openMove === s.item_id
@@ -356,9 +369,50 @@ function viewLoc() {
            <button class="btn" data-ok="${s.item_id}">Simpan perpindahan</button>
            <button class="btn ghost" data-cancel="1">Batal</button>`
         : `<button class="btn ghost" data-mv="${s.item_id}">Pindahkan</button>`}</div>`;
-    }).join('') : '<div class="empty">Lokasi ini kosong.</div>';
+    }).join('') : '<div class="empty">Lokasi ini kosong.</div>');
   };
   $('#lc').onchange = () => { openMove = null; flash($('#ls')); draw(); };
+  const norm = x => String(x).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const goLoc = raw => {
+    const v = String(raw || '').trim(); if (!v) return false;
+    const loc = locs.find(l => l.code.toUpperCase() === v.toUpperCase()) || locs.find(l => norm(l.code) === norm(v));
+    if (!loc) { toast(`Lokasi "${v}" tidak ditemukan`, true); return false; }
+    $('#lc').value = loc.id; openMove = null; flash($('#ls')); draw();
+    if (navigator.vibrate) navigator.vibrate(60);
+    return true;
+  };
+  $('#sc').onkeydown = e => {
+    if (e.key !== 'Enter' && e.key !== 'Tab') return;
+    e.preventDefault(); goLoc($('#sc').value); $('#sc').value = ''; $('#sc').focus();
+  };
+  let tm;
+  $('#sc').oninput = () => {
+    clearTimeout(tm);
+    tm = setTimeout(() => {
+      const v = $('#sc').value.trim();
+      if (v.length >= 2 && locs.some(l => norm(l.code) === norm(v))) { goLoc(v); $('#sc').value = ''; }
+    }, 400);
+  };
+  const camOff = () => { const r = $('#rd'), b = $('#cb'); if (r) r.innerHTML = ''; if (b) b.textContent = 'Scan dengan kamera'; };
+  $('#cb').onclick = async () => {
+    if (cam) { await stopCam(); return camOff(); }
+    try {
+      if (!window.Html5Qrcode) await new Promise((ok, no) => {
+        const el = document.createElement('script');
+        el.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        el.onload = ok; el.onerror = () => no(new Error('Pustaka kamera gagal dimuat'));
+        document.head.appendChild(el);
+      });
+      $('#rd').innerHTML = '<div id="rv" style="max-width:360px;margin:0 auto"></div>';
+      $('#cb').textContent = 'Tutup kamera';
+      cam = new Html5Qrcode('rv');
+      let last = 0;
+      await cam.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 120 } }, async txt => {
+        if (Date.now() - last < 1500) return; last = Date.now();
+        if (goLoc(txt)) { await stopCam(); camOff(); }
+      });
+    } catch (err) { await stopCam(); camOff(); toast('Kamera tidak bisa dibuka: ' + (err.message || err), true); }
+  };
   $('#ls').onclick = async e => {
     const btn = e.target.closest('button'); if (!btn) return;
     if (btn.dataset.mv) { openMove = btn.dataset.mv; return draw(); }
