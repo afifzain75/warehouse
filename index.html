@@ -87,6 +87,10 @@ nav button{transition:color .2s,border-color .2s}
 .seg button{flex:1;padding:10px;border:0;border-radius:8px;background:none;color:var(--mut);font:inherit;font-weight:600;transition:background .2s,color .2s}
 .seg button.on{background:var(--pri);color:#fff}
 .seg button.on[data-tx="out"]{background:var(--out)}
+.kpi{position:relative;overflow:hidden}
+.kpi small,.kpi b{position:relative}
+.kpi svg{position:absolute;right:10px;top:50%;width:46px;height:46px;transform:translateY(-50%) rotate(-8deg);opacity:.16;color:var(--acc);pointer-events:none}
+.kpi.in svg{color:var(--pri)}.kpi.out svg{color:var(--out)}
 </style>
 </head>
 <body>
@@ -187,19 +191,24 @@ function countUp(el, to) {
 }
 const afterPaint = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
 
+const icon = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const IC = {
+  box: icon('<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'),
+  layers: icon('<path d="M12 2l9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 17l9 5 9-5"/>'),
+  down: icon('<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/>'),
+  up: icon('<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 20h16"/>')
+};
 function viewHome() {
-  const lowItems = items.filter(i => total(i.id) <= i.min_stock);
   const totalQty = stock.reduce((a, s) => a + s.qty, 0);
   const byLoc = {}; stock.forEach(s => { byLoc[s.location_id] = (byLoc[s.location_id] || 0) + s.qty; });
   const top = Object.entries(byLoc).sort((a, b) => b[1] - a[1]).slice(0, 5), mx = top.length ? top[0][1] : 1;
   shell(`<h2>Ringkasan</h2>
   <div class="kpis">
-    <button class="kpi" data-go="stok"><small>Total Part No</small><b data-n="${items.length}">0</b></button>
-    <div class="kpi"><small>Total Qty</small><b data-n="${totalQty}">0</b></div>
-    <button class="kpi ${lowItems.length ? 'warn' : ''}" id="lowb"><small>Stok menipis (ketuk)</small><b data-n="${lowItems.length}">0</b></button>
-    <div class="kpi"><small>Transaksi hari ini</small><b id="tdy">…</b></div>
+    <button class="kpi" data-go="stok">${IC.box}<small>Total Part No</small><b data-n="${items.length}">0</b></button>
+    <div class="kpi">${IC.layers}<small>Total Qty</small><b data-n="${totalQty}">0</b></div>
+    <div class="kpi in">${IC.down}<small>Total Masuk (hari ini)</small><b id="tin">…</b></div>
+    <div class="kpi out">${IC.up}<small>Total Keluar (hari ini)</small><b id="tout">…</b></div>
   </div>
-  <div class="low-list" id="lowl">${lowItems.slice(0, 8).map(i => `<div class="card row"><div><b>${esc(i.name)}</b><div class="sku">${esc(i.sku)}</div></div><div class="low">${total(i.id)} / min ${i.min_stock}</div></div>`).join('')}${lowItems.length > 8 ? `<div class="hint" style="margin-bottom:10px">dan ${lowItems.length - 8} lainnya di tab Stok</div>` : ''}</div>
   <div class="card"><b>Masuk dan keluar, 7 hari terakhir</b>
     <div class="legend"><span><i class="bi"></i>Masuk</span><span><i class="bo"></i>Keluar</span></div>
     <div id="ch" class="hint">Memuat grafik…</div></div>
@@ -207,7 +216,6 @@ function viewHome() {
     ${top.length ? top.map(([id, q]) => `<div class="hrow" data-loc="${id}"><span>${esc(locCode(id))}</span><div class="track"><i style="--w:${q / mx * 100}%"></i></div><b>${q}</b></div>`).join('') : '<div class="empty">Belum ada stok.</div>'}</div>`);
   document.querySelectorAll('[data-n]').forEach(el => countUp(el, +el.dataset.n));
   afterPaint(() => { const t = $('#tl'); if (t) t.classList.add('go'); });
-  $('#lowb').onclick = () => $('#lowl').classList.toggle('open');
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { tab = b.dataset.go; render(); });
   document.querySelectorAll('[data-loc]').forEach(r => r.onclick = () => { selLoc = r.dataset.loc; tab = 'stok'; stockMode = 'loc'; render(); });
   (async () => {
@@ -217,14 +225,12 @@ function viewHome() {
       if (tab !== 'home' || !$('#ch')) return;
       const days = [];
       for (let k = 6; k >= 0; k--) { const d = new Date(); d.setDate(d.getDate() - k); days.push({ key: d.toDateString(), label: d.toLocaleDateString('id-ID', { weekday: 'short' }) + ' ' + d.getDate(), inn: 0, out: 0 }); }
-      let cnt = 0;
       mv.forEach(m => {
         if (m.type !== 'IN' && m.type !== 'OUT') return;
         const d = days.find(x => x.key === new Date(m.created_at).toDateString()); if (!d) return;
         if (m.type === 'IN') d.inn += m.qty; else d.out += m.qty;
-        if (d === days[6]) cnt++;
       });
-      countUp($('#tdy'), cnt);
+      countUp($('#tin'), days[6].inn); countUp($('#tout'), days[6].out);
       const max = Math.max(1, ...days.flatMap(d => [d.inn, d.out]));
       $('#ch').className = '';
       $('#ch').innerHTML = `<div class="bars">${days.map((d, k) => `<div class="day" data-k="${k}"><div class="pair"><i class="b bi" style="--h:${d.inn / max * 100}%"></i><i class="b bo" style="--h:${d.out / max * 100}%"></i></div><span>${esc(d.label)}</span></div>`).join('')}</div><div class="hint" id="cv" style="margin-top:8px">Ketuk satu hari untuk melihat rincian</div>`;
@@ -235,7 +241,7 @@ function viewHome() {
         $('#cv').textContent = `${d.label}: masuk ${d.inn}, keluar ${d.out}`;
       };
       afterPaint(() => { const b = $('.bars'); if (b) b.classList.add('go'); });
-    } catch (err) { if ($('#ch')) $('#ch').textContent = 'Grafik tidak bisa dimuat'; if ($('#tdy')) $('#tdy').textContent = '-'; }
+    } catch (err) { if ($('#ch')) $('#ch').textContent = 'Grafik tidak bisa dimuat'; ['#tin', '#tout'].forEach(k => { if ($(k)) $(k).textContent = '-'; }); }
   })();
 }
 
