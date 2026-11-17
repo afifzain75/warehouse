@@ -37,7 +37,7 @@ input,select{width:100%;font:inherit;padding:12px;border:1px solid var(--line);b
 .empty{color:var(--mut);text-align:center;padding:24px 0}
 .sec{margin-bottom:32px}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0)}
-nav button{flex:1;padding:12px 2px;border:0;background:none;color:var(--mut);font:inherit;font-size:12px;border-top:3px solid transparent}
+nav button{flex:1;padding:12px 2px;border:0;background:none;color:var(--mut);font:inherit;font-size:13px;border-top:3px solid transparent}
 nav button.on{color:var(--ink);font-weight:700;border-top-color:var(--acc)}
 #toast{position:fixed;left:16px;right:16px;bottom:80px;padding:12px 14px;border-radius:var(--r);background:var(--ink);color:#fff;display:none;z-index:9}
 #toast.err{background:var(--out)}
@@ -83,6 +83,10 @@ main{animation:up .28s ease both}
 nav button{transition:color .2s,border-color .2s}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 .x{border:0;background:none;color:var(--out);font:inherit;font-size:18px;padding:2px 6px;margin-left:6px;cursor:pointer}
+.seg{display:flex;gap:3px;padding:3px;margin-bottom:14px;background:var(--line);border-radius:var(--r)}
+.seg button{flex:1;padding:10px;border:0;border-radius:8px;background:none;color:var(--mut);font:inherit;font-weight:600;transition:background .2s,color .2s}
+.seg button.on{background:var(--pri);color:#fff}
+.seg button.on[data-tx="out"]{background:var(--out)}
 </style>
 </head>
 <body>
@@ -93,7 +97,7 @@ nav button{transition:color .2s,border-color .2s}
 <script>
 // ====== ISI DUA BARIS INI (Supabase > Project Settings > API) ======
 const SB_URL = 'https://pghvtzfyuxhafdnmwsfh.supabase.co';
-const SB_KEY = 'sb_publishable_C6hAkHr94fiLXlNY5ypV_w_rvHXx4QN';
+const SB_KEY = 'ISI_ANON_PUBLIC_KEY';
 // ==================================================================
 
 function fatal(msg) {
@@ -107,7 +111,7 @@ if (!SB_KEY || SB_KEY.indexOf('ISI_') === 0 || /\s/.test(SB_KEY)) fatal('SB_KEY 
 const sb = supabase.createClient(SB_URL, SB_KEY);
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let items = [], locs = [], stock = [], tab = 'home', user = null, pending = null, isAdmin = false;
+let items = [], locs = [], stock = [], tab = 'home', user = null, pending = null, isAdmin = false, stockMode = 'item', txMode = 'in';
 
 try {
   const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#1e90d6"/><rect x="22" y="30" width="56" height="42" fill="#ffffff"/><path d="M22 46h56" stroke="#1e90d6" stroke-width="5"/></svg>');
@@ -149,16 +153,18 @@ async function load() {
 }
 
 function shell(body) {
-  const tabs = [['home','Beranda'],['stok','Stok'],['in','Terima'],['out','Keluar'],['lok','Lokasi'],['data','Data']];
+  const tabs = [['home','Beranda'],['stok','Stok &amp; Lokasi'],['tx','Transaksi'],['data','Data']];
   $('#app').innerHTML = `<header><b>Gudang${isAdmin ? ' · Admin' : ''}</b><button id="lo">Keluar akun</button></header>
   <main>${body}</main>
   <nav>${tabs.map(([k, n]) => `<button data-t="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</nav>`;
   $('#lo').onclick = () => sb.auth.signOut();
   document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.t; pending = null; openMove = null; openAdj = null; stopCam(); render(); });
+  document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { stockMode = b.dataset.m; openMove = null; openAdj = null; stopCam(); render(); });
+  document.querySelectorAll('[data-tx]').forEach(b => b.onclick = () => { txMode = b.dataset.tx; render(); });
 }
 function render() {
   if (!user) return renderLogin();
-  ({home: viewHome, stok: viewStock, in: viewIn, out: viewOut, lok: viewLoc, data: viewData})[tab]();
+  ({home: viewHome, stok: () => (stockMode === 'loc' ? viewLoc() : viewStock()), tx: () => viewTx(txMode === 'in'), data: viewData})[tab]();
 }
 function renderLogin() {
   $('#app').innerHTML = `<div id="login"><h2>Masuk ke Gudang</h2>
@@ -203,7 +209,7 @@ function viewHome() {
   afterPaint(() => { const t = $('#tl'); if (t) t.classList.add('go'); });
   $('#lowb').onclick = () => $('#lowl').classList.toggle('open');
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { tab = b.dataset.go; render(); });
-  document.querySelectorAll('[data-loc]').forEach(r => r.onclick = () => { selLoc = r.dataset.loc; tab = 'lok'; render(); });
+  document.querySelectorAll('[data-loc]').forEach(r => r.onclick = () => { selLoc = r.dataset.loc; tab = 'stok'; stockMode = 'loc'; render(); });
   (async () => {
     try {
       const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
@@ -235,7 +241,7 @@ function viewHome() {
 
 let openAdj = null;
 function viewStock() {
-  shell(`<h2>Cek stok</h2><input id="q" placeholder="Cari nama atau SKU" type="search"><div id="ls" style="margin-top:12px"></div>`);
+  shell(`${stockSeg()}<h2>Cek stok per barang</h2><input id="q" placeholder="Cari nama atau SKU" type="search"><div id="ls" style="margin-top:12px"></div>`);
   const draw = () => {
     const q = $('#q').value.toLowerCase();
     const rows = items.filter(i => (i.name + i.sku + (i.material_no || '')).toLowerCase().includes(q));
@@ -276,12 +282,14 @@ function viewStock() {
   draw();
 }
 
+const stockSeg = () => `<div class="seg"><button data-m="item" class="${stockMode === 'item' ? 'on' : ''}">Per barang</button><button data-m="loc" class="${stockMode === 'loc' ? 'on' : ''}">Per lokasi</button></div>`;
+const txSeg = isIn => `<div class="seg"><button data-tx="in" class="${isIn ? 'on' : ''}">Terima</button><button data-tx="out" class="${isIn ? '' : 'on'}">Keluar</button></div>`;
 const carts = { in: [], out: [] };
 function viewIn() { viewTx(true); }
 function viewOut() { viewTx(false); }
 function viewTx(isIn) {
   const cart = carts[isIn ? 'in' : 'out'];
-  shell(`<h2>${isIn ? 'Penerimaan barang' : 'Pengeluaran barang'}</h2>
+  shell(`${txSeg(isIn)}<h2>${isIn ? 'Penerimaan barang' : 'Pengeluaran barang'}</h2>
   ${isIn ? '<p class="hint">Untuk barang atau lokasi baru, dan penerimaan dari file Excel, gunakan tab Data.</p>' : ''}
   <label>Cari barang</label><input id="fq" type="search" placeholder="Ketik Part No, Material No, atau nama">
   <label>Barang</label><select id="it"></select>
@@ -347,7 +355,7 @@ async function stopCam() {
 }
 let selLoc = '', openMove = null;
 function viewLoc() {
-  shell(`<h2>Cek lokasi</h2>
+  shell(`${stockSeg()}<h2>Cek stok per lokasi</h2>
   <label>Scan barcode lokasi (bin)</label>
   <input id="sc" placeholder="Ketuk di sini, lalu scan label bin" autocomplete="off" autocapitalize="characters">
   <button class="btn ghost" id="cb">Scan dengan kamera</button>
